@@ -1,0 +1,11 @@
+<!-- Вставьте ЭТО в index.html ПЕРЕД строками <script src="js/..."> -->
+<!-- После деплоя на Railway подставьте свой домен -->
+
+<script>
+  window.MB_NET_CONFIG = {
+    mode: 'remote',
+    apiUrl: 'https://ВАШ-ДОМЕН.up.railway.app',
+    wsUrl:  'wss://ВАШ-ДОМЕН.up.railway.app/ws',
+    pollMs: 4000
+  };
+</script>

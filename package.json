@@ -1,0 +1,13 @@
+{
+  "name": "magic-battle-server",
+  "version": "1.0.0",
+  "description": "Backend for Heroes of Astoria — Magic Battle (zero npm deps)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}

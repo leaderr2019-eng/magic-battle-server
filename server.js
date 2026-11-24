@@ -1,0 +1,346 @@
+/**
+ * Magic Battle — API-сервер без внешних зависимостей (только Node.js).
+ * Совместим с js/net.js клиента.
+ *
+ * Запуск:  node server.js
+ * Порт:    process.env.PORT || 3000
+ */
+'use strict';
+
+const http = require('http');
+const crypto = require('crypto');
+const db = require('./db');
+
+const PORT = process.env.PORT || 3000;
+const CLAN_FIGHT_XP = 20;
+const CLAN_FIGHT_CC = 20;
+const CLAN_KILL_XP = 500;
+const CLAN_KILL_CC = 400;
+const CLAN_FIGHT_EXP = 5;
+const CLAN_KILL_EXP = 40;
+const MAX_DAMAGE_PER_BATTLE = 2000000;
+
+function send(res, code, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Content-Length': Buffer.byteLength(body)
+  });
+  res.end(body);
+}
+
+function readJson(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', c => {
+      size += c.length;
+      if (size > 256 * 1024) {
+        reject(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      if (!chunks.length) return resolve({});
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function parseUrl(req) {
+  return new URL(req.url || '/', 'http://localhost');
+}
+
+function ensureMember(clan, player) {
+  if (!player || !player.id) return null;
+  if (!Array.isArray(clan.members)) clan.members = [];
+  let row = clan.members.find(m => m.id === player.id);
+  if (!row) {
+    row = {
+      id: player.id,
+      name: String(player.name || 'Player').slice(0, 24),
+      role: clan.members.length === 0 ? 'leader' : 'member',
+      contrib: 0,
+      bossDmg: 0,
+      power: Math.max(0, Math.round(+player.power || 0))
+    };
+    clan.members.push(row);
+  } else {
+    if (player.name) row.name = String(player.name).slice(0, 24);
+    if (player.power != null) row.power = Math.max(0, Math.round(+player.power || 0));
+  }
+  return row;
+}
+
+function addClanExp(clan, amount) {
+  clan.exp = (clan.exp || 0) + (amount || 0);
+  while (clan.lvl < 20) {
+    const need = 100 * clan.lvl;
+    if (clan.exp < need) break;
+    clan.exp -= need;
+    clan.lvl += 1;
+    clan.pts = (clan.pts || 0) + 1;
+  }
+}
+
+const rooms = new Map();
+
+function broadcastClan(clanId, event) {
+  const set = rooms.get(clanId);
+  if (!set || !set.size) return;
+  const clan = db.getOrCreateClan(clanId);
+  db.tickClanWeek(clan);
+  const payload = JSON.stringify({
+    type: 'clan_state',
+    event: event || null,
+    clan: db.publicClan(clan)
+  });
+  for (const client of set) {
+    try { client.send(payload); } catch (e) { /* */ }
+  }
+}
+
+function acceptWs(req, socket) {
+  const key = req.headers['sec-websocket-key'];
+  if (!key) { socket.destroy(); return; }
+  const accept = crypto
+    .createHash('sha1')
+    .update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
+    .digest('base64');
+  socket.write(
+    'HTTP/1.1 101 Switching Protocols\r\n' +
+    'Upgrade: websocket\r\nConnection: Upgrade\r\n' +
+    'Sec-WebSocket-Accept: ' + accept + '\r\n\r\n'
+  );
+
+  let clanId = 'global_astoria_clan';
+  try {
+    const u = new URL(req.url || '', 'http://localhost');
+    clanId = u.searchParams.get('clanId') || clanId;
+  } catch (e) { /* */ }
+
+  const client = {
+    alive: true,
+    send(data) {
+      if (!this.alive) return;
+      const payload = Buffer.from(String(data));
+      const len = payload.length;
+      let header;
+      if (len < 126) {
+        header = Buffer.alloc(2); header[0] = 0x81; header[1] = len;
+      } else if (len < 65536) {
+        header = Buffer.alloc(4); header[0] = 0x81; header[1] = 126; header.writeUInt16BE(len, 2);
+      } else {
+        header = Buffer.alloc(10); header[0] = 0x81; header[1] = 127;
+        header.writeUInt32BE(0, 2); header.writeUInt32BE(len, 6);
+      }
+      socket.write(Buffer.concat([header, payload]));
+    },
+    close() { this.alive = false; try { socket.end(); } catch (e) {} }
+  };
+
+  if (!rooms.has(clanId)) rooms.set(clanId, new Set());
+  rooms.get(clanId).add(client);
+
+  const clan = db.getOrCreateClan(clanId);
+  db.tickClanWeek(clan);
+  client.send(JSON.stringify({ type: 'clan_state', event: null, clan: db.publicClan(clan) }));
+
+  socket.on('data', () => {});
+  socket.on('close', () => {
+    client.alive = false;
+    const set = rooms.get(clanId);
+    if (set) { set.delete(client); if (!set.size) rooms.delete(clanId); }
+  });
+  socket.on('error', () => client.close());
+}
+
+async function handle(req, res) {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    });
+    return res.end();
+  }
+
+  const u = parseUrl(req);
+  const path = u.pathname.replace(/\/+$/, '') || '/';
+
+  try {
+    if (req.method === 'GET' && (path === '/' || path === '/health')) {
+      return send(res, 200, { ok: true, service: 'magic-battle-server', version: '1.0.0', time: Date.now() });
+    }
+
+    if (req.method === 'POST' && path === '/players/upsert') {
+      const body = await readJson(req);
+      const row = db.upsertPlayer({
+        id: body.id || (body.player && body.player.id),
+        name: body.name || (body.player && body.player.name),
+        power: body.power != null ? body.power : (body.player && body.player.power),
+        level: body.level != null ? body.level : (body.player && body.player.level),
+        verified: body.verified != null ? body.verified : (body.player && body.player.verified)
+      });
+      if (!row) return send(res, 400, { error: 'id required' });
+      return send(res, 200, { ok: true, player: row });
+    }
+
+    if (req.method === 'GET' && path === '/rating') {
+      const by = u.searchParams.get('by') === 'level' ? 'level' : 'power';
+      const limit = Math.min(100, Math.max(1, parseInt(u.searchParams.get('limit') || '50', 10)));
+      return send(res, 200, { ok: true, by, list: db.getRating(by, limit) });
+    }
+
+    let m = path.match(/^\/clans\/([^/]+)$/);
+    if (req.method === 'GET' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      db.tickClanWeek(clan);
+      db.scheduleSave();
+      return send(res, 200, { ok: true, clan: db.publicClan(clan) });
+    }
+
+    m = path.match(/^\/clans\/([^/]+)\/battle$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      db.tickClanWeek(clan);
+      const body = await readJson(req);
+      const player = body.player || {};
+      if (!player.id) return send(res, 400, { error: 'player.id required' });
+
+      const txId = body.txId || ('boss_battle_' + Date.now());
+      if (!db.markTx(txId)) {
+        return send(res, 200, {
+          ok: true, duplicate: true, clan: db.publicClan(clan),
+          reward: { dealt: 0, sparks: 0, ore: 0, gems: 0, xp: 0, cc: 0, items: [], notes: [], duplicate: true }
+        });
+      }
+
+      const fled = !!body.fled;
+      let dealt = Math.max(0, Math.round(+body.dealt || 0));
+      dealt = Math.min(dealt, MAX_DAMAGE_PER_BATTLE, Math.max(0, clan.bossHp));
+      const member = ensureMember(clan, player);
+      const reward = { dealt, sparks: 0, ore: 0, gems: 0, xp: CLAN_FIGHT_XP, cc: CLAN_FIGHT_CC, items: [], notes: [], win: false };
+      let defeated = false;
+
+      if (!fled && dealt > 0) {
+        reward.sparks = Math.round(dealt / 300);
+        member.bossDmg = (member.bossDmg || 0) + dealt;
+        member.contrib = (member.contrib || 0) + 5;
+        clan.actPts = (clan.actPts || 0) + 5;
+        addClanExp(clan, CLAN_FIGHT_EXP);
+        clan.bossHp = Math.max(0, clan.bossHp - dealt);
+        if (clan.bossHp <= 0) {
+          defeated = true;
+          reward.win = true;
+          reward.gems = 200;
+          reward.ore = 200;
+          reward.xp += CLAN_KILL_XP;
+          reward.cc += CLAN_KILL_CC;
+          reward.notes.push('Boss defeated!');
+          addClanExp(clan, CLAN_KILL_EXP);
+          clan.bossKillSeq = (clan.bossKillSeq || 0) + 1;
+          if (!Array.isArray(clan.bossRewards)) clan.bossRewards = [];
+          clan.bossRewards.push({ id: 'kill_' + clan.bossKillSeq + '_' + Date.now().toString(36), xp: CLAN_KILL_XP, cc: CLAN_KILL_CC, at: Date.now() });
+          if (clan.bossRewards.length > 8) clan.bossRewards = clan.bossRewards.slice(-8);
+          clan.bossHp = db.BOSS_MAX_HP;
+          clan.bossLvl = db.BOSS_LVL;
+        } else {
+          clan.bossHp = Math.max(1, clan.bossHp);
+        }
+      }
+
+      clan.updatedAt = Date.now();
+      db.scheduleSave();
+      broadcastClan(clan.id, { kind: 'battle', playerName: player.name, dealt, defeated });
+      return send(res, 200, { ok: true, clan: db.publicClan(clan), reward });
+    }
+
+    m = path.match(/^\/clans\/([^/]+)\/donate$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      db.tickClanWeek(clan);
+      const body = await readJson(req);
+      const player = body.player || {};
+      if (!player.id) return send(res, 400, { error: 'player.id required' });
+      const count = Math.max(1, Math.min(50, +body.count || 1));
+      const member = ensureMember(clan, player);
+      const act = 10 * count;
+      member.contrib = (member.contrib || 0) + act;
+      clan.actPts = (clan.actPts || 0) + act;
+      addClanExp(clan, 25 * count);
+      clan.updatedAt = Date.now();
+      db.scheduleSave();
+      broadcastClan(clan.id, { kind: 'donate', playerName: player.name, count });
+      return send(res, 200, { ok: true, clan: db.publicClan(clan) });
+    }
+
+    m = path.match(/^\/clans\/([^/]+)\/build$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const body = await readJson(req);
+      const player = body.player || {};
+      const key = body.buildKey;
+      if (!player.id || !key) return send(res, 400, { error: 'player.id and buildKey required' });
+      ensureMember(clan, player);
+      if ((clan.pts || 0) < 1) return send(res, 400, { error: 'no points', clan: db.publicClan(clan) });
+      clan.builds = clan.builds || {};
+      const cur = clan.builds[key] || 0;
+      if (cur >= 20) return send(res, 400, { error: 'max level', clan: db.publicClan(clan) });
+      clan.builds[key] = cur + 1;
+      clan.pts = (clan.pts || 0) - 1;
+      clan.updatedAt = Date.now();
+      db.scheduleSave();
+      broadcastClan(clan.id, { kind: 'build', buildKey: key });
+      return send(res, 200, { ok: true, clan: db.publicClan(clan) });
+    }
+
+    m = path.match(/^\/clans\/([^/]+)\/chest$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const body = await readJson(req);
+      const player = body.player || {};
+      const idx = +body.chestIdx;
+      if (!player.id || !Number.isFinite(idx)) return send(res, 400, { error: 'player.id and chestIdx required' });
+      ensureMember(clan, player);
+      clan.actClaimed = clan.actClaimed || {};
+      const claimKey = player.id + '_' + idx;
+      if (clan.actClaimed[claimKey]) return send(res, 200, { ok: true, already: true, clan: db.publicClan(clan) });
+      clan.actClaimed[claimKey] = Date.now();
+      clan.updatedAt = Date.now();
+      db.scheduleSave();
+      return send(res, 200, { ok: true, clan: db.publicClan(clan) });
+    }
+
+    send(res, 404, { error: 'not found', path });
+  } catch (e) {
+    console.error('[error]', e);
+    send(res, 500, { error: 'server error', message: String(e.message || e) });
+  }
+}
+
+const server = http.createServer((req, res) => { handle(req, res); });
+server.on('upgrade', (req, socket) => {
+  const u = parseUrl(req);
+  if (u.pathname === '/ws' || u.pathname === '/ws/') acceptWs(req, socket);
+  else socket.destroy();
+});
+
+server.listen(PORT, () => {
+  console.log('[magic-battle-server] http://localhost:' + PORT);
+  console.log('  GET  /health');
+  console.log('  GET  /rating');
+  console.log('  GET  /clans/global_astoria_clan');
+  console.log('  POST /clans/:id/battle');
+  console.log('  WS   /ws?clanId=global_astoria_clan');
+});
