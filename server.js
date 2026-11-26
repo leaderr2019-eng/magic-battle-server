@@ -180,8 +180,24 @@ function getClanName(id, fallback) {
 }
 
 function setClanName(id, name) {
-  if (id && name) clanNames.set(id, String(name).slice(0, 20));
+  if (id && name) {
+    clanNames.set(id, String(name).slice(0, 20));
+    try {
+      const fs = require('fs');
+      fs.writeFileSync('/tmp/clan_names.json', JSON.stringify([...clanNames.entries()]));
+    } catch (e) {}
+  }
 }
+
+function loadClanNames() {
+  try {
+    const fs = require('fs');
+    const data = fs.readFileSync('/tmp/clan_names.json', 'utf8');
+    const entries = JSON.parse(data);
+    entries.forEach(([id, name]) => clanNames.set(id, name));
+  } catch (e) {}
+}
+loadClanNames();
 
 function saveProfile(id, data) {
   if (!id) return;
