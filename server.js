@@ -174,21 +174,29 @@ function logAnalytics(entry) {
 }
 
 const clanNames = new Map();
+const clanEmblems = new Map();
 
 function getClanName(id, fallback) {
   return clanNames.get(id) || fallback || 'Клан';
 }
 
-function setClanName(id, name) {
+function getClanEmblem(id) {
+  return clanEmblems.get(id) || null;
+}
+
+function setClanName(id, name, emblem) {
   if (!id) return;
   if (!name) {
     clanNames.delete(id);
+    clanEmblems.delete(id);
   } else {
     clanNames.set(id, String(name).slice(0, 20));
+    if (emblem) clanEmblems.set(id, emblem);
   }
   try {
     const fs = require('fs');
     fs.writeFileSync('/tmp/clan_names.json', JSON.stringify([...clanNames.entries()]));
+    fs.writeFileSync('/tmp/clan_emblems.json', JSON.stringify([...clanEmblems.entries()]));
   } catch (e) {}
 }
 
@@ -198,6 +206,9 @@ function loadClanNames() {
     const data = fs.readFileSync('/tmp/clan_names.json', 'utf8');
     const entries = JSON.parse(data);
     entries.forEach(([id, name]) => clanNames.set(id, name));
+    const embData = fs.readFileSync('/tmp/clan_emblems.json', 'utf8');
+    const embEntries = JSON.parse(embData);
+    embEntries.forEach(([id, emb]) => clanEmblems.set(id, emb));
   } catch (e) {}
 }
 loadClanNames();
@@ -239,7 +250,7 @@ async function handle(req, res) {
       const m = path.match(/^\/clans\/([^/]+)\/rename$/);
       const clanId = decodeURIComponent(m[1]);
       const body = await readJson(req);
-      if (body.name) setClanName(clanId, body.name);
+      if (body.name) setClanName(clanId, body.name, body.emblem);
       const clan = db.getOrCreateClan(clanId);
       const pub = db.publicClan(clan);
       pub.name = getClanName(clanId, pub.name);
@@ -324,7 +335,7 @@ async function handle(req, res) {
         const members = clan.members || [];
         if (members.length === 0) continue;
         const power = members.reduce((s, m) => s + (m.power || 0), 0);
-        list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power, emblem: clan.emblem || null });
+        list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power, emblem: getClanEmblem(id) || clan.emblem || null });
       }
       list.sort((a, b) => b.power - a.power || b.lvl - a.lvl);
       return send(res, 200, { ok: true, list: list.slice(0, 50) });
