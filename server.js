@@ -317,11 +317,13 @@ async function handle(req, res) {
 
     let m = path.match(/^\/clans\/([^/]+)$/);
     if (req.method === 'GET' && m) {
-      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const clanId = decodeURIComponent(m[1]);
+      const clan = db.getOrCreateClan(clanId);
       db.tickClanWeek(clan);
       db.scheduleSave();
       const pub = db.publicClan(clan);
-      pub.name = getClanName(m[1], pub.name);
+      const storedName = getClanName(clanId, null);
+      if (storedName) pub.name = storedName;
       return send(res, 200, { ok: true, clan: pub });
     }
 
