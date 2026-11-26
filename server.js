@@ -173,7 +173,15 @@ function logAnalytics(entry) {
   if (analyticsLog.length > MAX_ANALYTICS) analyticsLog.shift();
 }
 
-const playerProfiles = new Map();
+const clanNames = new Map();
+
+function getClanName(id, fallback) {
+  return clanNames.get(id) || fallback || 'Клан';
+}
+
+function setClanName(id, name) {
+  if (id && name) clanNames.set(id, String(name).slice(0, 20));
+}
 
 function saveProfile(id, data) {
   if (!id) return;
@@ -208,7 +216,16 @@ async function handle(req, res) {
   const path = u.pathname.replace(/\/+$/, '') || '/';
 
   try {
-    if (req.method === 'GET' && (path === '/' || path === '/health')) {
+    if (req.method === 'POST' && path.match(/^\/clans\/[^/]+\/rename$/)) {
+      const m = path.match(/^\/clans\/([^/]+)\/rename$/);
+      const clanId = decodeURIComponent(m[1]);
+      const body = await readJson(req);
+      if (body.name) setClanName(clanId, body.name);
+      const clan = db.getOrCreateClan(clanId);
+      const pub = db.publicClan(clan);
+      pub.name = getClanName(clanId, pub.name);
+      return send(res, 200, { ok: true, clan: pub });
+    }
       return send(res, 200, { ok: true, service: 'magic-battle-server', version: '1.0.0', time: Date.now() });
     }
 
@@ -303,7 +320,9 @@ async function handle(req, res) {
       const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
       db.tickClanWeek(clan);
       db.scheduleSave();
-      return send(res, 200, { ok: true, clan: db.publicClan(clan) });
+      const pub = db.publicClan(clan);
+      pub.name = getClanName(m[1], pub.name);
+      return send(res, 200, { ok: true, clan: pub });
     }
 
     m = path.match(/^\/clans\/([^/]+)\/battle$/);
