@@ -165,6 +165,14 @@ function acceptWs(req, socket) {
   socket.on('error', () => client.close());
 }
 
+const analyticsLog = [];
+const MAX_ANALYTICS = 5000;
+
+function logAnalytics(entry) {
+  analyticsLog.push(entry);
+  if (analyticsLog.length > MAX_ANALYTICS) analyticsLog.shift();
+}
+
 async function handle(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
@@ -194,6 +202,44 @@ async function handle(req, res) {
       });
       if (!row) return send(res, 400, { error: 'id required' });
       return send(res, 200, { ok: true, player: row });
+    }
+
+    if (req.method === 'POST' && path === '/rating') {
+      const body = await readJson(req);
+      const row = db.upsertPlayer({
+        id: body.id,
+        name: body.name,
+        power: body.power,
+        level: body.level,
+        verified: true
+      });
+      if (!row) return send(res, 400, { error: 'id required' });
+      return send(res, 200, { ok: true });
+    }
+
+    if (req.method === 'POST' && path === '/analytics') {
+      const body = await readJson(req);
+      const playerId = String(body.playerId || '').trim();
+      if (!playerId) return send(res, 400, { error: 'playerId required' });
+      logAnalytics({
+        playerId: playerId,
+        name: String(body.name || '').slice(0, 24),
+        event: String(body.event || 'unknown').slice(0, 32),
+        level: Math.max(0, Math.floor(+body.level || 0)),
+        power: Math.max(0, Math.floor(+body.power || 0)),
+        sessionMs: Math.max(0, Math.floor(+body.sessionMs || 0)),
+        extra: body.extra || null,
+        ts: Date.now()
+      });
+      return send(res, 200, { ok: true });
+    }
+
+    if (req.method === 'GET' && path === '/analytics') {
+      const limit = Math.min(500, Math.max(1, parseInt(u.searchParams.get('limit') || '100', 10)));
+      const playerId = u.searchParams.get('playerId');
+      let list = analyticsLog.slice(-limit);
+      if (playerId) list = list.filter(e => e.playerId === playerId);
+      return send(res, 200, { ok: true, count: list.length, list: list });
     }
 
     if (req.method === 'GET' && path === '/rating') {
@@ -340,6 +386,7 @@ server.listen(PORT, () => {
   console.log('[magic-battle-server] http://localhost:' + PORT);
   console.log('  GET  /health');
   console.log('  GET  /rating');
+  console.log('  POST /rating');
   console.log('  GET  /clans/global_astoria_clan');
   console.log('  POST /clans/:id/battle');
   console.log('  WS   /ws?clanId=global_astoria_clan');
