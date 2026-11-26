@@ -242,6 +242,8 @@ async function handle(req, res) {
       pub.name = getClanName(clanId, pub.name);
       return send(res, 200, { ok: true, clan: pub });
     }
+
+    if (req.method === 'GET' && (path === '/' || path === '/health')) {
       return send(res, 200, { ok: true, service: 'magic-battle-server', version: '1.0.0', time: Date.now() });
     }
 
