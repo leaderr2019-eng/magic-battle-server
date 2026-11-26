@@ -173,6 +173,27 @@ function logAnalytics(entry) {
   if (analyticsLog.length > MAX_ANALYTICS) analyticsLog.shift();
 }
 
+const playerProfiles = new Map();
+
+function saveProfile(id, data) {
+  if (!id) return;
+  const prev = playerProfiles.get(id) || {};
+  playerProfiles.set(id, {
+    id: id,
+    name: data.name || prev.name || 'Игрок',
+    power: data.power != null ? data.power : (prev.power || 0),
+    level: data.level != null ? data.level : (prev.level || 0),
+    avatar: data.avatar || prev.avatar || 'viking',
+    unlocked: Array.isArray(data.unlocked) ? data.unlocked : (prev.unlocked || ['viking']),
+    verified: data.verified != null ? data.verified : (prev.verified || false),
+    ts: Date.now()
+  });
+}
+
+function getProfile(id) {
+  return playerProfiles.get(id) || null;
+}
+
 async function handle(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
@@ -193,15 +214,31 @@ async function handle(req, res) {
 
     if (req.method === 'POST' && path === '/players/upsert') {
       const body = await readJson(req);
+      const id = body.id || (body.player && body.player.id);
+      if (!id) return send(res, 400, { error: 'id required' });
+      saveProfile(id, {
+        name: body.name || (body.player && body.player.name),
+        power: body.power != null ? body.power : (body.player && body.player.power),
+        level: body.level != null ? body.level : (body.player && body.player.level),
+        avatar: body.avatar,
+        unlocked: body.unlocked,
+        verified: body.verified != null ? body.verified : (body.player && body.player.verified)
+      });
       const row = db.upsertPlayer({
-        id: body.id || (body.player && body.player.id),
+        id: id,
         name: body.name || (body.player && body.player.name),
         power: body.power != null ? body.power : (body.player && body.player.power),
         level: body.level != null ? body.level : (body.player && body.player.level),
         verified: body.verified != null ? body.verified : (body.player && body.player.verified)
       });
-      if (!row) return send(res, 400, { error: 'id required' });
-      return send(res, 200, { ok: true, player: row });
+      return send(res, 200, { ok: true, player: getProfile(id) });
+    }
+
+    if (req.method === 'GET' && path === '/players/profile') {
+      const id = u.searchParams.get('id');
+      const p = getProfile(id);
+      if (!p) return send(res, 404, { error: 'not found' });
+      return send(res, 200, { ok: true, profile: p });
     }
 
     if (req.method === 'POST' && path === '/rating') {
@@ -245,7 +282,20 @@ async function handle(req, res) {
     if (req.method === 'GET' && path === '/rating') {
       const by = u.searchParams.get('by') === 'level' ? 'level' : 'power';
       const limit = Math.min(100, Math.max(1, parseInt(u.searchParams.get('limit') || '50', 10)));
-      return send(res, 200, { ok: true, by, list: db.getRating(by, limit) });
+      const base = db.getRating(by, limit);
+      const list = base.map(p => {
+        const prof = getProfile(p.id);
+        return {
+          rank: p.rank,
+          id: p.id,
+          name: p.name,
+          power: p.power,
+          level: p.level,
+          avatar: prof ? prof.avatar : 'viking',
+          unlocked: prof ? prof.unlocked : ['viking']
+        };
+      });
+      return send(res, 200, { ok: true, by, list: list });
     }
 
     let m = path.match(/^\/clans\/([^/]+)$/);
