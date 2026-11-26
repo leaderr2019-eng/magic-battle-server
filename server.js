@@ -296,6 +296,16 @@ async function handle(req, res) {
       return send(res, 200, { ok: true, count: list.length, list: list });
     }
 
+    if (req.method === 'GET' && path === '/clans/top') {
+      const list = [];
+      for (const [id, name] of clanNames.entries()) {
+        const clan = db.getOrCreateClan(id);
+        list.push({ id, name, lvl: clan.lvl || 1, members: (clan.members || []).length });
+      }
+      list.sort((a, b) => b.lvl - a.lvl || b.members - a.members);
+      return send(res, 200, { ok: true, list: list.slice(0, 50) });
+    }
+
     if (req.method === 'GET' && path === '/rating') {
       const by = u.searchParams.get('by') === 'level' ? 'level' : 'power';
       const limit = Math.min(100, Math.max(1, parseInt(u.searchParams.get('limit') || '50', 10)));
