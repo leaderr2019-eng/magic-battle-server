@@ -324,7 +324,7 @@ async function handle(req, res) {
         const members = clan.members || [];
         if (members.length === 0) continue;
         const power = members.reduce((s, m) => s + (m.power || 0), 0);
-        list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power });
+        list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power, emblem: clan.emblem || null });
       }
       list.sort((a, b) => b.power - a.power || b.lvl - a.lvl);
       return send(res, 200, { ok: true, list: list.slice(0, 50) });
