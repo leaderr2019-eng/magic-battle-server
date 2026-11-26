@@ -180,13 +180,16 @@ function getClanName(id, fallback) {
 }
 
 function setClanName(id, name) {
-  if (id && name) {
+  if (!id) return;
+  if (!name) {
+    clanNames.delete(id);
+  } else {
     clanNames.set(id, String(name).slice(0, 20));
-    try {
-      const fs = require('fs');
-      fs.writeFileSync('/tmp/clan_names.json', JSON.stringify([...clanNames.entries()]));
-    } catch (e) {}
   }
+  try {
+    const fs = require('fs');
+    fs.writeFileSync('/tmp/clan_names.json', JSON.stringify([...clanNames.entries()]));
+  } catch (e) {}
 }
 
 function loadClanNames() {
@@ -318,9 +321,12 @@ async function handle(req, res) {
       const list = [];
       for (const [id, name] of clanNames.entries()) {
         const clan = db.getOrCreateClan(id);
-        list.push({ id, name, lvl: clan.lvl || 1, members: (clan.members || []).length });
+        const members = clan.members || [];
+        if (members.length === 0) continue;
+        const power = members.reduce((s, m) => s + (m.power || 0), 0);
+        list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power });
       }
-      list.sort((a, b) => b.lvl - a.lvl || b.members - a.members);
+      list.sort((a, b) => b.power - a.power || b.lvl - a.lvl);
       return send(res, 200, { ok: true, list: list.slice(0, 50) });
     }
 
