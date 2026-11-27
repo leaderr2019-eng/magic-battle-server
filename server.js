@@ -399,6 +399,27 @@ async function handle(req, res) {
       return send(res, 200, { ok: true, clan: db.publicClan(clan) });
     }
 
+    if (req.method === 'GET' && path === '/vkplay/billing') {
+      const uid = u.searchParams.get('uid');
+      const sum = u.searchParams.get('sum');
+      const tid = u.searchParams.get('tid');
+      const merchantParam = u.searchParams.get('merchant_param');
+      const sign = u.searchParams.get('sign');
+      console.log('VK Play billing:', { uid, sum, tid, merchantParam, sign });
+      if (!uid || !tid) return send(res, 400, { error: 'uid and tid required' });
+      if (!db.markTx('vkplay_' + tid)) {
+        console.log('VK Play duplicate:', tid);
+        return send(res, 200, { ok: true, duplicate: true });
+      }
+      let itemId = null;
+      try {
+        const mp = JSON.parse(merchantParam || '{}');
+        itemId = mp.item_id || mp.itemId;
+      } catch (e) {}
+      console.log('VK Play payment processed:', uid, sum, itemId);
+      return send(res, 200, { ok: true, uid, sum, itemId });
+    }
+
     if (req.method === 'GET' && (path === '/' || path === '/health')) {
       return send(res, 200, { ok: true, service: 'magic-battle-server', version: '1.0.0', time: Date.now() });
     }
