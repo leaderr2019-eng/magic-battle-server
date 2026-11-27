@@ -368,6 +368,14 @@ async function handle(req, res) {
       return send(res, 200, { ok: true });
     }
 
+    m = path.match(/^\/clans\/([^/]+)\/appstatus$/);
+    if (req.method === 'GET' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const playerId = u.searchParams.get('id');
+      const pending = (clan.applicants || []).some(a => a.id === playerId);
+      return send(res, 200, { ok: true, pending });
+    }
+
     m = path.match(/^\/clans\/([^/]+)\/join$/);
     if (req.method === 'POST' && m) {
       const clanId = decodeURIComponent(m[1]);
