@@ -309,6 +309,7 @@ async function handle(req, res) {
         level: body.level != null ? body.level : (body.player && body.player.level),
         avatar: body.avatar,
         unlocked: body.unlocked,
+        heroLevels: body.heroLevels,
         verified: body.verified != null ? body.verified : (body.player && body.player.verified)
       });
       const row = db.upsertPlayer({
