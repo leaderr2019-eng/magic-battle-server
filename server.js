@@ -386,6 +386,19 @@ async function handle(req, res) {
       return send(res, 200, { ok: true, count: list.length, list: list });
     }
 
+    if (req.method === 'GET' && path === '/clans/mymembership') {
+      const playerId = u.searchParams.get('id');
+      if (!playerId) return send(res, 400, { error: 'id required' });
+      const dbData = db.getDb();
+      for (const [clanId, clan] of Object.entries(dbData.clans || {})) {
+        const members = clan.members || [];
+        if (members.some(m => m.id === playerId)) {
+          return send(res, 200, { ok: true, clanId, clanName: clanNames.get(clanId) || clan.name });
+        }
+      }
+      return send(res, 200, { ok: true, clanId: null });
+    }
+
     if (req.method === 'GET' && path === '/clans/top') {
       const list = [];
       for (const [id, name] of clanNames.entries()) {
