@@ -174,7 +174,7 @@ function getRating(by, limit) {
   const db = getDb();
   const key = by === 'level' ? 'level' : 'power';
   const list = Object.values(db.players)
-    .filter(p => p && p.verified && p.name)
+    .filter(p => p && p.name && !/^(plr_|tx_|m_\d+_)/i.test(p.id))
     .sort((a, b) => (b[key] || 0) - (a[key] || 0) || (b.power || 0) - (a.power || 0))
     .slice(0, Math.min(100, limit || 50));
   return list.map((p, i) => ({

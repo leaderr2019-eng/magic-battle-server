@@ -346,7 +346,8 @@ async function handle(req, res) {
 
     m = path.match(/^\/clans\/([^/]+)\/join$/);
     if (req.method === 'POST' && m) {
-      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const clanId = decodeURIComponent(m[1]);
+      const clan = db.getOrCreateClan(clanId);
       const body = await readJson(req);
       const player = body.player || {};
       if (!player.id) return send(res, 400, { error: 'player.id required' });
@@ -356,6 +357,7 @@ async function handle(req, res) {
       }
       clan.updatedAt = Date.now();
       db.scheduleSave();
+      console.log('Clan join:', clanId, 'members:', clan.members.length);
       return send(res, 200, { ok: true, clan: db.publicClan(clan) });
     }
 
@@ -447,15 +449,15 @@ async function handle(req, res) {
 
     if (req.method === 'GET' && path === '/clans/top') {
       const list = [];
+      const dbData = db.getDb();
       for (const [id, name] of clanNames.entries()) {
-        const clan = db.getOrCreateClan(id);
-        const members = clan.members || [];
-        if (members.length === 0) {
-          clanNames.delete(id);
-          continue;
+        let clan = dbData.clans[id];
+        if (!clan) {
+          clan = db.getOrCreateClan(id);
         }
+        const members = clan.members || [];
+        if (members.length === 0) continue;
         const power = members.reduce((s, m) => s + (m.power || 0), 0);
-        if (power <= 0) continue;
         list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power, emblem: getClanEmblem(id) || clan.emblem || null, bossDefeated: !!clan.bossDefeatedThisWeek, recruit: clan.recruit || 'free' });
       }
       list.sort((a, b) => b.power - a.power || b.lvl - a.lvl);
