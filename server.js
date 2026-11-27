@@ -131,6 +131,7 @@ function acceptWs(req, socket) {
 
   const client = {
     alive: true,
+    lastPong: Date.now(),
     send(data) {
       if (!this.alive) return;
       const payload = Buffer.from(String(data));
@@ -156,13 +157,25 @@ function acceptWs(req, socket) {
   db.tickClanWeek(clan);
   client.send(JSON.stringify({ type: 'clan_state', event: null, clan: db.publicClan(clan) }));
 
-  socket.on('data', () => {});
+  const pingInterval = setInterval(() => {
+    if (!client.alive) { clearInterval(pingInterval); return; }
+    if (Date.now() - client.lastPong > 60000) { client.close(); clearInterval(pingInterval); return; }
+    try { client.send(JSON.stringify({ type: 'ping', ts: Date.now() })); } catch (e) {}
+  }, 25000);
+
+  socket.on('data', buf => {
+    try {
+      const str = buf.toString();
+      if (str.includes('pong')) client.lastPong = Date.now();
+    } catch (e) {}
+  });
   socket.on('close', () => {
+    clearInterval(pingInterval);
     client.alive = false;
     const set = rooms.get(clanId);
     if (set) { set.delete(client); if (!set.size) rooms.delete(clanId); }
   });
-  socket.on('error', () => client.close());
+  socket.on('error', () => { clearInterval(pingInterval); client.close(); });
 }
 
 const analyticsLog = [];
