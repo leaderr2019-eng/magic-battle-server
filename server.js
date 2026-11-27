@@ -239,7 +239,7 @@ function scheduleProfileSave() {
 function saveProfile(id, data) {
   if (!id) return;
   const prev = playerProfiles.get(id) || {};
-  playerProfiles.set(id, {
+  const profile = {
     id: id,
     name: data.name || prev.name || 'Игрок',
     power: data.power != null ? data.power : (prev.power || 0),
@@ -258,8 +258,10 @@ function saveProfile(id, data) {
     })(),
     verified: data.verified != null ? data.verified : (prev.verified || false),
     ts: Date.now()
-  });
-  scheduleProfileSave();
+  };
+  playerProfiles.set(id, profile);
+  sb.saveProfile(id, profile).catch(e => console.log('Save profile error:', e.message));
+  console.log('Saved profile:', id, profile.name, profile.power);
 }
 
 function loadProfiles() {
