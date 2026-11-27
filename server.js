@@ -227,6 +227,18 @@ function loadClanNames() {
 }
 loadClanNames();
 
+let _profileSaveTimer = null;
+function scheduleProfileSave() {
+  if (_profileSaveTimer) return;
+  _profileSaveTimer = setTimeout(() => {
+    _profileSaveTimer = null;
+    try {
+      const fs = require('fs');
+      fs.writeFileSync('/tmp/profiles.json', JSON.stringify([...playerProfiles.entries()]));
+    } catch (e) {}
+  }, 2000);
+}
+
 function saveProfile(id, data) {
   if (!id) return;
   const prev = playerProfiles.get(id) || {};
@@ -250,10 +262,7 @@ function saveProfile(id, data) {
     verified: data.verified != null ? data.verified : (prev.verified || false),
     ts: Date.now()
   });
-  try {
-    const fs = require('fs');
-    fs.writeFileSync('/tmp/profiles.json', JSON.stringify([...playerProfiles.entries()]));
-  } catch (e) {}
+  scheduleProfileSave();
 }
 
 function loadProfiles() {
