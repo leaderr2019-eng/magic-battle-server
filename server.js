@@ -180,6 +180,7 @@ function acceptWs(req, socket) {
 
 const analyticsLog = [];
 const MAX_ANALYTICS = 5000;
+const playerProfiles = new Map();
 
 function logAnalytics(entry) {
   analyticsLog.push(entry);
@@ -239,7 +240,21 @@ function saveProfile(id, data) {
     verified: data.verified != null ? data.verified : (prev.verified || false),
     ts: Date.now()
   });
+  try {
+    const fs = require('fs');
+    fs.writeFileSync('/tmp/profiles.json', JSON.stringify([...playerProfiles.entries()]));
+  } catch (e) {}
 }
+
+function loadProfiles() {
+  try {
+    const fs = require('fs');
+    const data = fs.readFileSync('/tmp/profiles.json', 'utf8');
+    const entries = JSON.parse(data);
+    entries.forEach(([id, p]) => playerProfiles.set(id, p));
+  } catch (e) {}
+}
+loadProfiles();
 
 function getProfile(id) {
   return playerProfiles.get(id) || null;
