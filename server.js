@@ -358,7 +358,10 @@ async function handle(req, res) {
       const role = body.role;
       if (playerId && role) {
         const member = (clan.members || []).find(mb => mb.id === playerId);
-        if (member && member.role !== 'leader') {
+        if (member) {
+          if (role === 'leader') {
+            (clan.members || []).forEach(mb => { if (mb.role === 'leader') mb.role = 'officer'; });
+          }
           member.role = role;
           clan.updatedAt = Date.now();
           db.scheduleSave();
