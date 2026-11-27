@@ -476,12 +476,16 @@ async function handle(req, res) {
       const playerId = u.searchParams.get('id');
       if (!playerId) return send(res, 400, { error: 'id required' });
       const dbData = db.getDb();
+      console.log('MyMembership check:', playerId, 'clans:', Object.keys(dbData.clans || {}).length);
       for (const [clanId, clan] of Object.entries(dbData.clans || {})) {
         const members = clan.members || [];
-        if (members.some(m => m.id === playerId)) {
+        const found = members.find(m => m.id === playerId);
+        if (found) {
+          console.log('Found in clan:', clanId, 'role:', found.role);
           return send(res, 200, { ok: true, clanId, clanName: clanNames.get(clanId) || clan.name });
         }
       }
+      console.log('Not found in any clan');
       return send(res, 200, { ok: true, clanId: null });
     }
 
