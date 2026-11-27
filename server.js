@@ -278,22 +278,25 @@ loadProfiles();
     if (meta.names) meta.names.forEach(([id, name]) => clanNames.set(id, name));
     if (meta.emblems) meta.emblems.forEach(([id, emb]) => clanEmblems.set(id, emb));
     const profs = await sb.loadProfiles();
+    console.log('Supabase profiles raw:', profs ? profs.length : 0);
     if (profs) {
       profs.forEach(([id, p]) => {
         playerProfiles.set(id, p);
-        db.upsertPlayer({ id, name: p.name, power: p.power, level: p.level, verified: p.verified });
+        console.log('Loaded profile:', id, p.name, p.power);
       });
     }
     const clans = await sb.loadAllClans();
+    console.log('Supabase clans raw:', clans ? clans.length : 0);
     if (clans) {
       clans.forEach(c => {
         if (c && c.id) {
           const dbData = db.getDb();
           dbData.clans[c.id] = c;
+          console.log('Loaded clan:', c.id, 'members:', (c.members || []).length);
         }
       });
     }
-    console.log('Supabase loaded:', clanNames.size, 'clans,', playerProfiles.size, 'profiles');
+    console.log('Supabase loaded:', clanNames.size, 'clan names,', playerProfiles.size, 'profiles');
   } catch (e) {
     console.log('Supabase load error:', e.message);
   }
@@ -467,21 +470,16 @@ async function handle(req, res) {
     if (req.method === 'GET' && path === '/rating') {
       const by = u.searchParams.get('by') === 'level' ? 'level' : 'power';
       const limit = Math.min(100, Math.max(1, parseInt(u.searchParams.get('limit') || '50', 10)));
-      const base = db.getRating(by, limit);
-      const list = base.map(p => {
-        const prof = getProfile(p.id);
-        return {
-          rank: p.rank,
-          id: p.id,
-          name: p.name,
-          power: p.power,
-          level: p.level,
-          avatar: prof ? prof.avatar : 'viking',
-          unlocked: prof ? prof.unlocked : ['viking'],
-          heroLevels: prof ? prof.heroLevels : {}
-        };
+      const profiles = [];
+      playerProfiles.forEach((p, id) => {
+        if (p && p.name && !/^(plr_|tx_|m_\d+_)/i.test(id)) {
+          profiles.push({ id, name: p.name, power: p.power || 0, level: p.level || 0, avatar: p.avatar || 'viking', unlocked: p.unlocked || ['viking'], heroLevels: p.heroLevels || {} });
+        }
       });
-      return send(res, 200, { ok: true, by, list: list });
+      console.log('Rating request: total profiles', playerProfiles.size, 'filtered', profiles.length);
+      profiles.sort((a, b) => (b[by] || 0) - (a[by] || 0));
+      const list = profiles.slice(0, limit).map((p, i) => ({ rank: i + 1, ...p }));
+      return send(res, 200, { ok: true, by, list });
     }
 
     let m = path.match(/^\/clans\/([^/]+)$/);
