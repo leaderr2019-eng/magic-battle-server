@@ -350,6 +350,24 @@ async function handle(req, res) {
       return send(res, 200, { ok: true });
     }
 
+    m = path.match(/^\/clans\/([^/]+)\/role$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const body = await readJson(req);
+      const playerId = body.playerId;
+      const role = body.role;
+      if (playerId && role) {
+        const member = (clan.members || []).find(mb => mb.id === playerId);
+        if (member && member.role !== 'leader') {
+          member.role = role;
+          clan.updatedAt = Date.now();
+          db.scheduleSave();
+          console.log('Role changed:', playerId, role);
+        }
+      }
+      return send(res, 200, { ok: true });
+    }
+
     m = path.match(/^\/clans\/([^/]+)\/join$/);
     if (req.method === 'POST' && m) {
       const clanId = decodeURIComponent(m[1]);
