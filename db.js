@@ -138,6 +138,7 @@ function tickClanWeek(clan) {
   clan.bossWeek = wk;
   clan.bossHp = BOSS_MAX_HP;
   clan.bossLvl = BOSS_LVL;
+  clan.bossDefeatedThisWeek = false;
   clan.updatedAt = Date.now();
   scheduleSave();
   return true;
