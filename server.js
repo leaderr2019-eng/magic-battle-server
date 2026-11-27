@@ -475,6 +475,7 @@ async function handle(req, res) {
       const list = [];
       const dbData = db.getDb();
       for (const [id, name] of clanNames.entries()) {
+        if (!name || name === 'Клан') continue;
         let clan = dbData.clans[id];
         if (!clan) {
           clan = db.getOrCreateClan(id);
