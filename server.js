@@ -237,7 +237,16 @@ function saveProfile(id, data) {
     level: data.level != null ? data.level : (prev.level || 0),
     avatar: data.avatar || prev.avatar || 'viking',
     unlocked: Array.isArray(data.unlocked) ? data.unlocked : (prev.unlocked || ['viking']),
-    heroLevels: data.heroLevels || prev.heroLevels || {},
+    heroLevels: (function() {
+      const hl = data.heroLevels || prev.heroLevels || {};
+      const out = {};
+      const maxLvl = 999;
+      for (const k in hl) {
+        const v = Math.floor(+hl[k] || 1);
+        if (v >= 1 && v <= maxLvl) out[k] = v;
+      }
+      return out;
+    })(),
     verified: data.verified != null ? data.verified : (prev.verified || false),
     ts: Date.now()
   });
