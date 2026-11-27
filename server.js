@@ -85,7 +85,7 @@ function ensureMember(clan, player) {
 function addClanExp(clan, amount) {
   clan.exp = (clan.exp || 0) + (amount || 0);
   while (clan.lvl < 20) {
-    const need = 100 * clan.lvl;
+    const need = 80 * clan.lvl;
     if (clan.exp < need) break;
     clan.exp -= need;
     clan.lvl += 1;
