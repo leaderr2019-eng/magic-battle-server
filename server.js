@@ -322,6 +322,7 @@ async function handle(req, res) {
   const path = u.pathname.replace(/\/+$/, '') || '/';
 
   try {
+    let m;
     if (req.method === 'POST' && path.match(/^\/clans\/[^/]+\/rename$/)) {
       const m = path.match(/^\/clans\/([^/]+)\/rename$/);
       const clanId = decodeURIComponent(m[1]);
@@ -484,7 +485,7 @@ async function handle(req, res) {
       return send(res, 200, { ok: true, by, list });
     }
 
-    let m = path.match(/^\/clans\/([^/]+)$/);
+    m = path.match(/^\/clans\/([^/]+)$/);
     if (req.method === 'GET' && m) {
       const clanId = decodeURIComponent(m[1]);
       const clan = db.getOrCreateClan(clanId);
