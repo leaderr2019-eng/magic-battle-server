@@ -297,7 +297,7 @@ async function handle(req, res) {
       const m = path.match(/^\/clans\/([^/]+)\/rename$/);
       const clanId = decodeURIComponent(m[1]);
       const body = await readJson(req);
-      if (body.name) setClanName(clanId, body.name, body.emblem);
+      setClanName(clanId, body.name || '', body.emblem);
       const clan = db.getOrCreateClan(clanId);
       const pub = db.publicClan(clan);
       pub.name = getClanName(clanId, pub.name);
@@ -381,9 +381,13 @@ async function handle(req, res) {
       for (const [id, name] of clanNames.entries()) {
         const clan = db.getOrCreateClan(id);
         const members = clan.members || [];
-        if (members.length === 0) continue;
+        if (members.length === 0) {
+          clanNames.delete(id);
+          continue;
+        }
         const power = members.reduce((s, m) => s + (m.power || 0), 0);
-        list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power, emblem: getClanEmblem(id) || clan.emblem || null });
+        if (power <= 0) continue;
+        list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power, emblem: getClanEmblem(id) || clan.emblem || null, bossDefeated: !!clan.bossDefeatedThisWeek });
       }
       list.sort((a, b) => b.power - a.power || b.lvl - a.lvl);
       return send(res, 200, { ok: true, list: list.slice(0, 50) });
@@ -453,6 +457,7 @@ async function handle(req, res) {
         clan.bossHp = Math.max(0, clan.bossHp - dealt);
         if (clan.bossHp <= 0) {
           defeated = true;
+          clan.bossDefeatedThisWeek = true;
           reward.win = true;
           reward.gems = 200;
           reward.ore = 200;

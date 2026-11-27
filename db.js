@@ -204,6 +204,7 @@ function publicClan(clan) {
     bossHp: clan.bossHp,
     bossLvl: clan.bossLvl,
     bossWeek: clan.bossWeek,
+    bossDefeatedThisWeek: !!clan.bossDefeatedThisWeek,
     actPts: clan.actPts || 0,
     actClaimed: clan.actClaimed || {},
     builds: clan.builds || {},
