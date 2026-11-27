@@ -278,7 +278,21 @@ loadProfiles();
     if (meta.names) meta.names.forEach(([id, name]) => clanNames.set(id, name));
     if (meta.emblems) meta.emblems.forEach(([id, emb]) => clanEmblems.set(id, emb));
     const profs = await sb.loadProfiles();
-    if (profs) profs.forEach(([id, p]) => playerProfiles.set(id, p));
+    if (profs) {
+      profs.forEach(([id, p]) => {
+        playerProfiles.set(id, p);
+        db.upsertPlayer({ id, name: p.name, power: p.power, level: p.level, verified: p.verified });
+      });
+    }
+    const clans = await sb.loadAllClans();
+    if (clans) {
+      clans.forEach(c => {
+        if (c && c.id) {
+          const dbData = db.getDb();
+          dbData.clans[c.id] = c;
+        }
+      });
+    }
     console.log('Supabase loaded:', clanNames.size, 'clans,', playerProfiles.size, 'profiles');
   } catch (e) {
     console.log('Supabase load error:', e.message);
@@ -389,6 +403,7 @@ async function handle(req, res) {
         verified: true
       });
       if (!row) return send(res, 400, { error: 'id required' });
+      saveProfile(body.id, { name: body.name, power: body.power, level: body.level, verified: true });
       return send(res, 200, { ok: true });
     }
 
