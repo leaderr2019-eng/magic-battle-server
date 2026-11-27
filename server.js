@@ -387,7 +387,7 @@ async function handle(req, res) {
         }
         const power = members.reduce((s, m) => s + (m.power || 0), 0);
         if (power <= 0) continue;
-        list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power, emblem: getClanEmblem(id) || clan.emblem || null, bossDefeated: !!clan.bossDefeatedThisWeek });
+        list.push({ id, name, lvl: clan.lvl || 1, members: members.length, power, emblem: getClanEmblem(id) || clan.emblem || null, bossDefeated: !!clan.bossDefeatedThisWeek, recruit: clan.recruit || 'free' });
       }
       list.sort((a, b) => b.power - a.power || b.lvl - a.lvl);
       return send(res, 200, { ok: true, list: list.slice(0, 50) });
@@ -518,6 +518,19 @@ async function handle(req, res) {
       clan.updatedAt = Date.now();
       db.scheduleSave();
       broadcastClan(clan.id, { kind: 'build', buildKey: key });
+      return send(res, 200, { ok: true, clan: db.publicClan(clan) });
+    }
+
+    m = path.match(/^\/clans\/([^/]+)\/recruit$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const body = await readJson(req);
+      const mode = body.recruit;
+      if (mode === 'free' || mode === 'apply' || mode === 'closed') {
+        clan.recruit = mode;
+        clan.updatedAt = Date.now();
+        db.scheduleSave();
+      }
       return send(res, 200, { ok: true, clan: db.publicClan(clan) });
     }
 
