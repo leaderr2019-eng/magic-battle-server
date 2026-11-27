@@ -314,6 +314,21 @@ async function handle(req, res) {
       return send(res, 200, { ok: true, clan: pub });
     }
 
+    m = path.match(/^\/clans\/([^/]+)\/join$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const body = await readJson(req);
+      const player = body.player || {};
+      if (!player.id) return send(res, 400, { error: 'player.id required' });
+      clan.members = clan.members || [];
+      if (!clan.members.some(mb => mb.id === player.id)) {
+        clan.members.push({ id: player.id, name: player.name || 'Игрок', power: player.power || 0, role: player.role || 'member', contrib: 0, bossDmg: 0 });
+      }
+      clan.updatedAt = Date.now();
+      db.scheduleSave();
+      return send(res, 200, { ok: true, clan: db.publicClan(clan) });
+    }
+
     if (req.method === 'GET' && (path === '/' || path === '/health')) {
       return send(res, 200, { ok: true, service: 'magic-battle-server', version: '1.0.0', time: Date.now() });
     }
