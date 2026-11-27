@@ -521,6 +521,53 @@ async function handle(req, res) {
       return send(res, 200, { ok: true, clan: db.publicClan(clan) });
     }
 
+    m = path.match(/^\/clans\/([^/]+)\/approve$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const body = await readJson(req);
+      const appId = body.appId;
+      clan.applicants = clan.applicants || [];
+      const idx = clan.applicants.findIndex(a => a.id === appId);
+      if (idx >= 0) {
+        const ap = clan.applicants.splice(idx, 1)[0];
+        clan.members = clan.members || [];
+        if (!clan.members.some(m => m.id === ap.id)) {
+          clan.members.push({ id: ap.id, name: ap.name, power: ap.power || 0, role: 'member', contrib: 0, bossDmg: 0 });
+        }
+      }
+      clan.updatedAt = Date.now();
+      db.scheduleSave();
+      return send(res, 200, { ok: true, clan: db.publicClan(clan) });
+    }
+
+    m = path.match(/^\/clans\/([^/]+)\/reject$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const body = await readJson(req);
+      const appId = body.appId;
+      clan.applicants = clan.applicants || [];
+      clan.applicants = clan.applicants.filter(a => a.id !== appId);
+      clan.updatedAt = Date.now();
+      db.scheduleSave();
+      return send(res, 200, { ok: true, clan: db.publicClan(clan) });
+    }
+
+    m = path.match(/^\/clans\/([^/]+)\/apply$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const body = await readJson(req);
+      const player = body.player || {};
+      if (!player.id) return send(res, 400, { error: 'player.id required' });
+      clan.applicants = clan.applicants || [];
+      if (!clan.applicants.some(a => a.id === player.id)) {
+        clan.applicants.push({ id: player.id, name: player.name || 'Игрок', power: player.power || 0, at: Date.now() });
+        if (clan.applicants.length > 50) clan.applicants = clan.applicants.slice(-50);
+      }
+      clan.updatedAt = Date.now();
+      db.scheduleSave();
+      return send(res, 200, { ok: true });
+    }
+
     m = path.match(/^\/clans\/([^/]+)\/recruit$/);
     if (req.method === 'POST' && m) {
       const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
