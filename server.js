@@ -370,9 +370,12 @@ async function handle(req, res) {
 
     m = path.match(/^\/clans\/([^/]+)\/appstatus$/);
     if (req.method === 'GET' && m) {
-      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const clanId = decodeURIComponent(m[1]);
+      const clan = db.getOrCreateClan(clanId);
       const playerId = u.searchParams.get('id');
-      const pending = (clan.applicants || []).some(a => a.id === playerId);
+      const applicants = clan.applicants || [];
+      const pending = applicants.some(a => a.id === playerId);
+      console.log('AppStatus:', clanId, 'player:', playerId, 'applicants:', applicants.length, 'pending:', pending);
       return send(res, 200, { ok: true, pending });
     }
 
