@@ -314,6 +314,22 @@ async function handle(req, res) {
       return send(res, 200, { ok: true, clan: pub });
     }
 
+    m = path.match(/^\/clans\/([^/]+)\/leave$/);
+    if (req.method === 'POST' && m) {
+      const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
+      const body = await readJson(req);
+      const playerId = body.playerId;
+      if (playerId) {
+        clan.members = (clan.members || []).filter(mb => mb.id !== playerId);
+        if (clan.members.length === 0) {
+          clanNames.delete(decodeURIComponent(m[1]));
+        }
+      }
+      clan.updatedAt = Date.now();
+      db.scheduleSave();
+      return send(res, 200, { ok: true });
+    }
+
     m = path.match(/^\/clans\/([^/]+)\/join$/);
     if (req.method === 'POST' && m) {
       const clan = db.getOrCreateClan(decodeURIComponent(m[1]));
