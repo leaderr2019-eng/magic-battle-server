@@ -10,6 +10,7 @@
 const http = require('http');
 const crypto = require('crypto');
 const db = require('./db');
+const sb = require('./db-supabase');
 
 const PORT = process.env.PORT || 3000;
 const CLAN_FIGHT_XP = 20;
@@ -203,15 +204,12 @@ function setClanName(id, name, emblem) {
   if (!name) {
     clanNames.delete(id);
     clanEmblems.delete(id);
+    sb.saveClanMeta(id, null, null).catch(() => {});
   } else {
     clanNames.set(id, String(name).slice(0, 20));
     if (emblem) clanEmblems.set(id, emblem);
+    sb.saveClanMeta(id, name, emblem).catch(() => {});
   }
-  try {
-    const fs = require('fs');
-    fs.writeFileSync('/tmp/clan_names.json', JSON.stringify([...clanNames.entries()]));
-    fs.writeFileSync('/tmp/clan_emblems.json', JSON.stringify([...clanEmblems.entries()]));
-  } catch (e) {}
 }
 
 function loadClanNames() {
@@ -232,10 +230,9 @@ function scheduleProfileSave() {
   if (_profileSaveTimer) return;
   _profileSaveTimer = setTimeout(() => {
     _profileSaveTimer = null;
-    try {
-      const fs = require('fs');
-      fs.writeFileSync('/tmp/profiles.json', JSON.stringify([...playerProfiles.entries()]));
-    } catch (e) {}
+    playerProfiles.forEach((p, id) => {
+      sb.saveProfile(id, p).catch(() => {});
+    });
   }, 2000);
 }
 
@@ -274,6 +271,19 @@ function loadProfiles() {
   } catch (e) {}
 }
 loadProfiles();
+
+(async () => {
+  try {
+    const meta = await sb.loadClanNames();
+    if (meta.names) meta.names.forEach(([id, name]) => clanNames.set(id, name));
+    if (meta.emblems) meta.emblems.forEach(([id, emb]) => clanEmblems.set(id, emb));
+    const profs = await sb.loadProfiles();
+    if (profs) profs.forEach(([id, p]) => playerProfiles.set(id, p));
+    console.log('Supabase loaded:', clanNames.size, 'clans,', playerProfiles.size, 'profiles');
+  } catch (e) {
+    console.log('Supabase load error:', e.message);
+  }
+})();
 
 function getProfile(id) {
   return playerProfiles.get(id) || null;
