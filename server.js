@@ -237,6 +237,7 @@ function saveProfile(id, data) {
     level: data.level != null ? data.level : (prev.level || 0),
     avatar: data.avatar || prev.avatar || 'viking',
     unlocked: Array.isArray(data.unlocked) ? data.unlocked : (prev.unlocked || ['viking']),
+    heroLevels: data.heroLevels || prev.heroLevels || {},
     verified: data.verified != null ? data.verified : (prev.verified || false),
     ts: Date.now()
   });
@@ -382,7 +383,8 @@ async function handle(req, res) {
           power: p.power,
           level: p.level,
           avatar: prof ? prof.avatar : 'viking',
-          unlocked: prof ? prof.unlocked : ['viking']
+          unlocked: prof ? prof.unlocked : ['viking'],
+          heroLevels: prof ? prof.heroLevels : {}
         };
       });
       return send(res, 200, { ok: true, by, list: list });
